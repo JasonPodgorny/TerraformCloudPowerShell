@@ -218,9 +218,9 @@ function Get-TfCloudWorkspace {
 		.PARAMETER  Name
 			TFCloud Workspace Name(s) to list.  Lists all Workspaces if left blank
 		.EXAMPLE
-			PS C:\> Get-TfCloudWorkspaces
+			PS C:\> Get-TfCloudWorkspace
 		.EXAMPLE
-			PS C:\> Get-TfCloudWorkspaces -name workspace1,workspace2
+			PS C:\> Get-TfCloudWorkspace -name workspace1,workspace2
 	#>
 	[CmdletBinding()]
 	[OutputType([Object])]
@@ -375,7 +375,7 @@ function Get-TfCloudRunsByWorkspace {
 	process {
 		foreach ( $workspace in $WorkspaceName) {
 			Write-Verbose "Looking Up Id For Workspace: $workspace"
-			$workspaceDetails = Get-TfCloudWorkspaces -Name $workspace
+			$workspaceDetails = Get-TfCloudWorkspace -Name $workspace
 			$workspaceId = $workspaceDetails.id
 
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/runs"
@@ -422,7 +422,7 @@ function Start-TfCloudRun {
 		$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs"
 		foreach ( $workspace in $WorkspaceName) {
 			Write-Verbose "Looking Up Id For Workspace: $workspace"
-			$workspaceDetails = Get-TfCloudWorkspaces -Name $workspace
+			$workspaceDetails = Get-TfCloudWorkspace -Name $workspace
 			$workspaceId = $workspaceDetails.id
 
 			$bodyObject = @{
@@ -621,7 +621,7 @@ function Get-TfCloudConfigVersionsByWorkspace {
 	process {
 		foreach ( $workspace in $WorkspaceName ) {
 			Write-Verbose "Getting Configuration Versions For Workspace: $workspace"
-			$workspaceDetails = Get-TfCloudWorkspaces -Name $workspace
+			$workspaceDetails = Get-TfCloudWorkspace -Name $workspace
 			$workspaceId = $workspaceDetails.id
 
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/configuration-versions"
