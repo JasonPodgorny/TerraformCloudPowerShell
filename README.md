@@ -81,6 +81,8 @@ Remove-TfCloudVariablesFromWorkspace
 Get-TfCloudRunsByWorkspace
 Get-TfCloudRunDetails
 Start-TfCloudRun
+Approve-TFCloudRun
+Stop-TFCloudRun
 Get-TFCloudPlan
 Get-TFCloudPlanLog
 ```
