@@ -73,7 +73,7 @@ Remove-TfCloudWorkspace
 
 ```
 Get-TfCloudVariablesByWorkspace
-Add-TfCloudVariableToWorkspace
+Add-TfCloudVariablesToWorkspace
 ```
 
 ```

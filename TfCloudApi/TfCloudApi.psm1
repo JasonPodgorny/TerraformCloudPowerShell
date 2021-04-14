@@ -455,7 +455,7 @@ function Get-TfCloudVariablesByWorkspace {
 		}
 	}
 }
-function Add-TfCloudVariableToWorkspace {
+function Add-TfCloudVariablesToWorkspace {
 	<#
 		.SYNOPSIS
 			Creates Variables In A Workspace
@@ -993,7 +993,7 @@ export-modulemember -Function Get-TfCloudWorkspaceDetails
 export-modulemember -Function New-TfCloudWorkspace
 export-modulemember -Function Remove-TfCloudWorkspace
 export-modulemember -Function Get-TfCloudVariablesByWorkspace
-export-modulemember -Function Add-TfCloudVariableToWorkspace
+export-modulemember -Function Add-TfCloudVariablesToWorkspace
 export-modulemember -Function Get-TfCloudRunsByWorkspace
 export-modulemember -Function Get-TfCloudRunDetails
 export-modulemember -Function Start-TfCloudRun
