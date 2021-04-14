@@ -598,6 +598,94 @@ function Add-TfCloudVariablesToWorkspace {
     	Write-verbose "Finished adding variables to TFE workspace."
 	}
 }
+function Remove-TfCloudVariablesFromWorkspace {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+    Param(
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName,
+        [Parameter(Mandatory = $false, HelpMessage = "list of names of the non-sensitive Terraform variables to be deleted")]
+		[string[]]$TFVariables,
+        [Parameter(Mandatory = $false, HelpMessage = "list of names of the sensitive Terraform variables to be deleted")]
+		[string[]]$TFSecrets,
+        [Parameter(Mandatory = $false, HelpMessage = "list of names of the non-sensitive Environment variables to be deleted")]
+		[string[]]$EnvVariables,
+        [Parameter(Mandatory = $false, HelpMessage = "list of names of the sensitive Environment variables to be deleted")]
+		[string[]]$EnvSecrets
+    )
+    begin {
+		Write-Verbose "Adding Variables To Workspaces"
+    } 
+	process {
+		foreach ( $workspace in $WorkspaceName ) {
+		    Write-verbose "Getting Existing Variables For Workspace: $workspace"
+			$variableResult = Get-TfCloudVariablesByWorkspace -workspacename $workspace
+			$ExistingVariables = @()
+            foreach ($item in $variableResult) {
+                $ExistingVariables += New-Object psobject -Property @{"key" = $item.attributes.key; "sensitive" = [bool]$item.attributes.sensitive; "category" = $item.attributes.category}
+            }
+        	$SourceVariables = @()
+        	if ($PSBoundParameters.containskey('TFVariables')) {
+            	foreach ($item in $TFVariables) {
+                	Write-verbose "Processing Terraform variable $item"
+                	$SourceVariables += New-Object psobject -Property @{"key" = $item; "sensitive" = $false; "category" = "terraform"}
+            	}
+        	}
+        	if ($PSBoundParameters.containskey('TFSecrets')) {
+            	foreach ($item in $TFSecrets) {
+                	Write-verbose "Processing Terraform secret $item"
+                	$SourceVariables += New-Object psobject -Property @{"key" = $item; "sensitive" = $true; "category" = "terraform"}
+            	}
+        	}
+        	if ($PSBoundParameters.containskey('EnvVariables')) {
+            	foreach ($item in $EnvVariables) {
+                	Write-verbose "Processing Environment variable $item"
+                	$SourceVariables += New-Object psobject -Property @{"key" = $item; "sensitive" = $false; "category" = "env"}
+            	}
+        	}
+        	if ($PSBoundParameters.containskey('EnvSecrets')) {
+            	foreach ($item in $EnvSecrets) {
+                	Write-verbose "Processing Environment secret $item"
+                	$SourceVariables += New-Object psobject -Property @{"key" = $item; "sensitive" = $true; "category" = "env"}
+            	}
+        	}
+        	if ($SourceVariables.count -eq 0) {
+            	Throw "No Terraform or Environment variables & secrets have been passed into the function."
+        	} else {
+            	Write-verbose "The following variables have been passed into the function"
+            	foreach ($item in $SourceVariables) {
+                	Write-verbose "key = $($item.key); sensitive = '$($item.sensitive)'; category = '$($item.category)'"
+            	}
+        	}
+
+        	Write-verbose "Comparing Source Variables With Existing Variables"
+        	$VariableAction = @()
+
+        	Compare-Object $SourceVariables $ExistingVariables -Property key, sensitive, category -IncludeEqual | Where-Object {$_.key -ne "CONFIRM_DESTROY"} | ForEach-Object {
+            	if ($_.sideindicator -eq "==") {
+                	$VariableAction += New-Object psobject -Property @{"Variable" = $_; "Action" = "Remove"}
+            	}
+        	}
+
+        	if ($VariableAction.count -gt 0) {
+            	Write-verbose "Removing Variables"
+        	} else {
+            	Write-Verbose "No variables to remove"
+        	}
+
+        	if ($PSCmdlet.ShouldProcess($workspace)) {
+            	foreach ($item in $VariableAction) {
+                	write-verbose "Removing $($item.variable.key)"
+					$url = "$($Global:DefaultTfCloudOrg.ServerUri)vars/$($VariableResult | Where-Object {$_.attributes.key -eq $item.variable.key -and $_.attributes.category -ieq $item.Variable.category -and $_.attributes.sensitive -eq $item.variable.sensitive} |Select-Object -exp id)"
+                    $deleteRequest = Calling-Delete -url $url
+					Write-Output $true
+                }
+            }
+        }
+    } End {
+        Write-verbose "Finished removing variables from TF Cloud Workspaces."
+    }
+}
 function Get-TfCloudRunsByWorkspace {
 	<#
 		.SYNOPSIS
@@ -994,6 +1082,7 @@ export-modulemember -Function New-TfCloudWorkspace
 export-modulemember -Function Remove-TfCloudWorkspace
 export-modulemember -Function Get-TfCloudVariablesByWorkspace
 export-modulemember -Function Add-TfCloudVariablesToWorkspace
+export-modulemember -Function Remove-TfCloudVariablesFromWorkspace
 export-modulemember -Function Get-TfCloudRunsByWorkspace
 export-modulemember -Function Get-TfCloudRunDetails
 export-modulemember -Function Start-TfCloudRun
