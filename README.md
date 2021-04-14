@@ -68,6 +68,12 @@ Disconnect-JpTfCloud
 Get-TfCloudWorkspace
 Get-TfCloudWorkspaceDetails
 New-TfCloudWorkspace
+Remove-TfCloudWorkspace
+```
+
+```
+Get-TfCloudVariablesByWorkspace
+Add-TfCloudVariable
 ```
 
 ```

@@ -183,6 +183,33 @@ Function Calling-Post {
 		}
 	}
 }
+#Declare the PATCH function
+Function Calling-Patch {
+	[CmdletBinding()]
+	param (
+		[Parameter(Mandatory=$True)]
+		[string]$Url,
+		[Parameter(Mandatory=$True)]
+		[string]$Body
+	)
+	begin {
+		Write-Verbose "Invoking REST PATCH at URL $url"
+	}
+	process {	
+		if ( !$Global:DefaultTfCloudOrg ) {
+			Write-Warning "Must connect to TF Cloud Organization before attempting PATCH"
+			return
+		}
+		try {
+		    $ApiToken = ($Global:DefaultTfCloudOrg.ApiToken)
+			$headers = @{"Authorization"="Bearer $(decodeToken -apiToken $ApiToken)";}
+			Invoke-RestMethod -Headers $headers -Uri $url -Body $Body -Method Patch -ContentType 'application/vnd.api+json' -TimeOutSec 300
+		} catch { 
+			Write-Warning "$_" 
+			Write-Warning "Patch Failed at - $url"
+		}
+	}
+}
 #Declare the DELETE function
 Function Calling-Delete {
 	[CmdletBinding()]
@@ -302,14 +329,19 @@ function New-TfCloudWorkspace {
 			Terraform Version For Workspace
 		.PARAMETER  WorkDir
 			Working Directory For Workspace
-		.PARAMETER  repoId
-			ID Of Repository To Use
+		.PARAMETER  repoOrg
+			ID Of Az Devops Org For Repo
+		.PARAMETER  repoProject
+			ID Of Az Devops Project For Repo
+		.PARAMETER  repoName
+			ID Of Az Devops Repo Name
 		.PARAMETER  oauthTokenId
 			ID Of oauth toke to use
 		.EXAMPLE
 			PS C:\> New-TfCloudWorkspace -Name "<<WORKSPACE_NAME>" -TfVersion "<TERRAFORM_VERSION>" -WorkDir "<WORK_DIR>" -repoId "<REPO_ID>" -oauthTokenId "<OAUTH_TOKEN_ID>"
 	#>
 	[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+	[OutputType([Object])]
 	param(
 		[Parameter(Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
 		[string]$Name,
@@ -318,16 +350,22 @@ function New-TfCloudWorkspace {
 		[Parameter(Mandatory=$True, HelpMessage="Working Directory")]
 		[string]$WorkDir,
 		[Parameter(Mandatory=$True, HelpMessage="Repo Identifier")]
-		[string]$repoId,
-		[Parameter(Mandatory=$True, HelpMessage="Oauth Token Id")]
-		[string]$oauthTokenId
+		[string]$repoOrg,
+		[Parameter(Mandatory=$True, HelpMessage="Repo Identifier")]
+		[string]$repoProject,
+		[Parameter(Mandatory=$True, HelpMessage="Repo Identifier")]
+		[string]$repoName,
+		[Parameter(Mandatory=$True, HelpMessage="Oauth Client Name")]
+		[string]$oauthClientName
 	)
 	begin {
 		Write-Verbose "Creating TF Cloud Workspace $Name"
 	} 
 	process { 
 		$url = "$($Global:DefaultTfCloudOrg.OrganizationUri)workspaces"
-
+		$repoString = $repoOrg + "/" + $repoProject + "/" + "_git" + "/" + $repoName
+		$oauthTokenDetails = Get-TfCloudOAuthClients -Name $oauthClientName | Get-TfCloudOAuthTokens
+		$oauthTokenId = $oauthTokenDetails.id
 		$body = @{
             "data" = @{
                 "attributes" = @{
@@ -335,7 +373,7 @@ function New-TfCloudWorkspace {
 					"terraform_version" = $TfVersion
 					"working-directory" = $WorkDir
 					"vcs-repo" = @{
-						"identifier" = $repoId
+						"identifier" = $repoString
 						"oauth-token-id" = $oauthTokenId
 					}
 				}
@@ -347,6 +385,201 @@ function New-TfCloudWorkspace {
 		}
 		$workspaceCreate.data | Add-Member -NotePropertyName "name" -NotePropertyValue $workspaceCreate.data.attributes.name
 		Write-Output $workspaceCreate.data
+	}
+}
+Function Remove-TfCloudWorkspace {
+	<#
+		.SYNOPSIS
+			Removes TF Cloud Workspaces Specified In Namelist
+		.DESCRIPTION
+			Removes TF Cloud Workspaces Specified In Namelist
+		.PARAMETER  WorkspaceName
+			TFCloud Workspace Name(s) to remove.
+		.EXAMPLE
+			PS C:\> Remove-TfCloudWorkspace -name workspace1,workspace2
+	#>
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([boolean])]
+    Param(
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName
+    )
+    begin {
+		Write-Verbose "Remove TF Cloud Workspaces"
+    } 
+	process {
+		foreach ( $workspace in $WorkspaceName ) {
+			Write-Verbose "Removing TF Cloud Workspace: ${workspace}"
+			$url = "$($Global:DefaultTfCloudOrg.OrganizationUri)workspaces/${workspace}"
+			if ($PSCmdlet.ShouldProcess($workspace)) {
+				$workspaceCreate = Calling-Delete -url $url
+				Write-Output $true
+			}
+		}
+    } 
+}
+function Get-TfCloudVariablesByWorkspace {
+	<#
+		.SYNOPSIS
+			Gets List Of Variables From TFCloud Workspace
+		.DESCRIPTION
+			Gets List Of Variables From TFCloud Workspace
+		.PARAMETER  WorkspaceName
+			TFCloud Workspace Name to list Variables For.  
+		.EXAMPLE
+			PS C:\> Get-TfCloudVariablesByWorkspace
+		.EXAMPLE
+			PS C:\> Get-TfCloudVariablesByWorkspace -name workspace1
+	#>
+	[CmdletBinding()]
+	[OutputType([Object])]
+	param(
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName
+	)
+	begin {
+		Write-Verbose "Getting TFCloud Variables For Workspaces"
+	} 
+	process {
+		foreach ( $workspace in $WorkspaceName) {
+			Write-Verbose "Getting Variables For Workspace: ${workspace}"
+			$workspaceOrg = $Global:DefaultTfCloudOrg.Organization
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)vars?filter%5Borganization%5D%5Bname%5D=${workspaceOrg}&filter%5Bworkspace%5D%5Bname%5D=${workspace}"
+			$variables = Calling-Get -url $url
+			foreach ($variable in $variables.data) {
+				$variable | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $workspace
+				write-output $variable
+			}
+		}
+	}
+}
+function Add-TfCloudVariable {
+    [CmdletBinding()]
+	[OutputType([Object])]
+    Param(
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName,
+        [Parameter(Mandatory = $false, HelpMessage = "Non-sensitive Terraform variables in a hashtable")]
+		[hashtable]$TFVariables,
+        [Parameter(Mandatory = $false, HelpMessage = "Sensitive Terraform Variables in a hashtable")]
+		[hashtable]$TFSecrets,
+        [Parameter(Mandatory = $false, HelpMessage = "Non-sensitive environment variables in a hashtable")]
+		[hashtable]$EnvVariables,
+        [Parameter(Mandatory = $false, HelpMessage = "Sensitive Envrionment Variables in a hashtable")]
+		[hashtable]$EnvSecrets
+    )
+	begin {
+		Write-Verbose "Adding Variables To Workspaces"
+	}
+	process {
+		foreach ( $workspace in $WorkspaceName ) {
+			Write-Verbose "Adding Variables To Workspace: ${workspace}"
+			$variableResult = Get-TfCloudVariablesByWorkspace -workspacename $workspace
+			$ExistingVariables = @()
+        	foreach ($item in $variableResult) {
+            	$ExistingVariables += New-Object psobject -Property @{"key" = $item.attributes.key; "sensitive" = [bool]$item.attributes.sensitive; "category" = $item.attributes.category}
+        	}
+			$SourceVariables = @()
+			if ($PSBoundParameters.containskey('TFVariables')) {
+        		foreach ($key in $TFVariables.keys)	{
+            		Write-verbose "Processing Terraform variable $key"
+            		$SourceVariables += New-Object psobject -Property @{"key" = $key; "value" = $TFVariables.$key; "sensitive" = $false; "category" = "terraform"}
+        		}
+    		}
+    		if ($PSBoundParameters.containskey('TFSecrets')) {
+        		foreach ($key in $TFSecrets.keys) {
+            		Write-verbose "Processing Terraform secret $key"
+            		$SourceVariables += New-Object psobject -Property @{"key" = $key; "value" = $TFSecrets.$key; "sensitive" = $true; "category" = "terraform"}
+        		}
+    		}
+    		if ($PSBoundParameters.containskey('EnvVariables')) {
+        		foreach ($key in $EnvVariables.keys) {
+            		Write-verbose "Processing Environment variable $key"
+            		$SourceVariables += New-Object psobject -Property @{"key" = $key; "value" = $EnvVariables.$key; "sensitive" = $false; "category" = "env"}
+        		}
+    		}
+    		if ($PSBoundParameters.containskey('EnvSecrets')) {
+        		foreach ($key in $EnvSecrets.keys) {
+            		Write-verbose "Processing Environment secret $key"
+            		$SourceVariables += New-Object psobject -Property @{"key" = $key; "value" = $EnvSecrets.$key; "sensitive" = $true; "category" = "env"}
+        		}
+    		}
+    		if ($SourceVariables.count -eq 0) {
+				Write-Warning "Not Given Any Variables To Process"
+        		Throw "Not Given Any Variables To Process"
+    		} else {
+        		Write-verbose "The following variables have been passed into the function"
+        		foreach ($item in $SourceVariables) {
+    				Write-verbose "key = $($item.key); sensitive = '$($item.sensitive)'; category = '$($item.category)'"
+        		}
+    		}
+			Write-verbose "Comparing Source Variables With Existing Variables"
+    		$VariableAction = @()
+    		Compare-Object $SourceVariables $ExistingVariables -Property key, sensitive, category -IncludeEqual | Where-Object {$_.key -ne "CONFIRM_DESTROY"} | ForEach-Object {
+        		if ($_.sideindicator -eq "==") {
+            		$VariableAction += New-Object psobject -Property @{"Variable" = $_; "Action" = "Modify"}
+        		} elseif ($_.sideindicator -eq "<=") {
+            		$VariableAction += New-Object psobject -Property @{"Variable" = $_; "Action" = "Add"}
+            	} elseif ($_.sideindicator -eq "=>") {
+            		$VariableAction += New-Object psobject -Property @{"Variable" = $_; "Action" = "Remove"}
+        		}
+			}
+			Write-verbose "Updating Variables"
+    		if ($VariableAction.action -contains "add") {
+        		$workspaceDetails = Get-TfCloudWorkspace -Name $WorkspaceName
+        		$workspaceId = $workspaceDetails.Id
+    		}
+    		foreach ($item in $VariableAction) {
+            	if ($item.action -ieq "add") {
+                	write-verbose "Adding variable $($item.variable.key)"
+					$url = "$($Global:DefaultTfCloudOrg.ServerUri)vars"
+                    $body = @{
+                        "data" = @{
+                            "type"          = "vars"
+                            "attributes"    = @{
+                                "key"       = $($item.Variable.key)
+                                "value"     = $($SourceVariables.GetEnumerator() | Where-Object {$_.key -eq $item.variable.key -and $_.category -ieq $item.variable.category -and $_.sensitive -eq $item.variable.sensitive} |Select-Object -ExpandProperty Value)
+                                "category"  = $($item.variable.category)
+                                "hcl"       = "false"
+                                "sensitive" = $($item.Variable.sensitive)
+                            }
+                            "relationships" = @{
+                                "workspace" = @{
+                                    "data" = @{
+                                        "id"   = "$workspaceId"
+                                        "type" = "workspaces"
+                                    }
+                                }
+                            }
+                        }
+                    } | ConvertTo-Json -Depth 5
+					$addVariable = Calling-Post -url $url -body $body
+					Write-Output $addVariable.data
+            	} elseif ($item.action -ieq "modify") {
+                	write-verbose "Modifying $($item.variable.key)"
+					$url = "$($Global:DefaultTfCloudOrg.ServerUri)vars/$($variableResult | Where-Object {$_.attributes.key -eq $item.variable.key -and $_.attributes.category -ieq $item.Variable.category -and $_.attributes.sensitive -eq $item.variable.sensitive} |Select-Object -exp id)"
+                    $body = @{
+                        "data" = @{
+                            "type"       = "vars"
+                            "id"         = $($variableResult | Where-Object {$_.attributes.key -eq $item.variable.key -and $_.attributes.category -ieq $item.Variable.category -and $_.attributes.sensitive -eq $item.variable.sensitive} |Select-Object -exp id)
+                            "attributes" = @{
+                                "key"       = $($item.variable.key)
+                                "value"     = $($SourceVariables.GetEnumerator() | Where-Object {$_.key -eq $item.Variable.key -and $_.category -ieq $item.Variable.category -and $_.sensitive -eq $item.variable.sensitive} |Select-Object -ExpandProperty Value)
+                                "category"  = $($item.variable.category)
+                                "hcl"       = "false"
+                                "sensitive" = $($item.Variable.sensitive)
+                            }
+                        }
+                    } | ConvertTo-Json
+					$modifyVariable = Calling-Patch -url $url -body $body
+					Write-Output $modifyVariable.data
+                }
+            }
+        }
+    	Write-verbose "Finished adding variables to TFE workspace."
 	}
 }
 function Get-TfCloudRunsByWorkspace {
@@ -744,6 +977,9 @@ export-modulemember -Function Disconnect-JpTfCloud
 export-modulemember -Function Get-TfCloudWorkspace
 export-modulemember -Function Get-TfCloudWorkspaceDetails
 export-modulemember -Function New-TfCloudWorkspace
+export-modulemember -Function Remove-TfCloudWorkspace
+export-modulemember -Function Get-TfCloudVariablesByWorkspace
+export-modulemember -Function Add-TfCloudVariable
 export-modulemember -Function Get-TfCloudRunsByWorkspace
 export-modulemember -Function Get-TfCloudRunDetails
 export-modulemember -Function Start-TfCloudRun
