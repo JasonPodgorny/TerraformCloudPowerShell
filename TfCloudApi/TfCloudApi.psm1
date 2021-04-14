@@ -209,12 +209,12 @@ Function Calling-Delete {
 	
 	}
 }
-function Get-TfCloudWorkspaces {
+function Get-TfCloudWorkspace {
 	<#
 		.SYNOPSIS
-			Gets List Of Workspaces From TFCloud Organization
+			Gets List Of Workspaces From TFCloud Organization.  Lists all Workspaces if no name(s) specified
 		.DESCRIPTION
-			Gets List Of Workspaces From TFCloud Organization
+			Gets List Of Workspaces From TFCloud Organization.  Lists all Workspaces if no name(s) specified
 		.PARAMETER  Name
 			TFCloud Workspace Name(s) to list.  Lists all Workspaces if left blank
 		.EXAMPLE
@@ -228,7 +228,6 @@ function Get-TfCloudWorkspaces {
 		[Parameter(ValueFromPipeline=$True, HelpMessage="TFCloud Workspace Names")]
 		[string[]]$Name
 	)
-	
 	begin {
 		Write-Verbose "Getting TFCloud Workspaces"
 	} 
@@ -250,6 +249,47 @@ function Get-TfCloudWorkspaces {
 	}
 	
 }
+function Get-TfCloudWorkspaceDetails {
+	<#
+		.SYNOPSIS
+			Gets List Of Workspaces From TFCloud Organization By Id
+		.DESCRIPTION
+			Gets List Of Workspaces From TFCloud Organization By Id
+		.PARAMETER  WorkspaceId
+			TFCloud Workspace Ids to list.
+		.EXAMPLE
+			PS C:\> Get-TfCloudWorkspaceDetails -WorkspaceId ws-xxxxx
+	#>
+	[CmdletBinding()]
+	[OutputType([Object])]
+	param(
+		[Parameter(ValueFromPipelineByPropertyName, HelpMessage="TFCloud Workspace Names")]
+		[Alias('Id')]
+		[string[]]$WorkspaceId
+	)
+	begin {
+		Write-Verbose "Getting TFCloud Workspaces"
+	} 
+	process {
+		foreach ( $workspace in $WorkspaceId ) {
+			Write-Verbose "Getting TFCloud Workspace For Id: ${workspace}"
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspace}"
+			$workspaceList = Calling-Get -url $url
+			foreach ($workspaceOut in $workspaceList.data) {
+				$workspaceOut | Add-Member -NotePropertyName "name" -NotePropertyValue $workspaceOut.attributes.name
+				if ( $name ) { 
+					foreach ( $workspaceName in $name ) {
+						if ($workspaceOut.name -eq $workspaceName) {
+							write-output $workspaceOut
+						}
+					}
+				} else {
+					write-output $workspaceOut
+				}
+			}
+		}
+	}
+}
 function New-TfCloudWorkspace {
 	<#
 		.SYNOPSIS
@@ -267,7 +307,7 @@ function New-TfCloudWorkspace {
 		.PARAMETER  oauthTokenId
 			ID Of oauth toke to use
 		.EXAMPLE
-			PS C:\> Add-TfCloudWorkspace -Name "<<WORKSPACE_NAME>" -TfVersion "<TERRAFORM_VERSION>" -WorkDir "<WORK_DIR>" -repoId "<REPO_ID>" -oauthTokenId "<OAUTH_TOKEN_ID>"
+			PS C:\> New-TfCloudWorkspace -Name "<<WORKSPACE_NAME>" -TfVersion "<TERRAFORM_VERSION>" -WorkDir "<WORK_DIR>" -repoId "<REPO_ID>" -oauthTokenId "<OAUTH_TOKEN_ID>"
 	#>
 	[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
 	param(
@@ -309,7 +349,7 @@ function New-TfCloudWorkspace {
 		Write-Output $workspaceCreate.data
 	}
 }
-function Get-TfCloudRuns {
+function Get-TfCloudRunsByWorkspace {
 	<#
 		.SYNOPSIS
 			Gets List Of Runs From TFCloud Workspace
@@ -325,23 +365,28 @@ function Get-TfCloudRuns {
 	[CmdletBinding()]
 	[OutputType([Object])]
 	param(
-		[Parameter(Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
-		[string]$WorkspaceName
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName
 	)
 	begin {
-		Write-Verbose "Getting TFCloud Runs For Workspace $WorkspaceName"
+		Write-Verbose "Getting TFCloud Runs For Workspaces"
 	} 
 	process {
-		Write-Verbose "Looking Up Id For Workspace: $WorkspaceName"
-		$workspaceId = ( Get-TfCloudWorkspaces -Name $WorkspaceName ).id
+		foreach ( $workspace in $WorkspaceName) {
+			Write-Verbose "Looking Up Id For Workspace: $workspace"
+			$workspaceDetails = Get-TfCloudWorkspaces -Name $workspace
+			$workspaceId = $workspaceDetails.id
 
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/runs"
-		$runsList = Calling-Get -url $url
-		foreach ($run in $runsList.data) {
-			write-output $run
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/runs"
+			$runsList = Calling-Get -url $url
+			foreach ($run in $runsList.data) {
+				$run | Add-Member -NotePropertyName "status" -NotePropertyValue $run.attributes.status
+				$run | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $workspaceDetails.name
+				write-output $run
+			}
 		}
 	}
-	
 }
 function Start-TfCloudRun {
 	<#
@@ -360,73 +405,93 @@ function Start-TfCloudRun {
 		.EXAMPLE
 			PS C:\> Start-TfCloudRun -name workspace1
 	#>
-	[CmdletBinding()]
+	[CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
 	param(
-		[Parameter(Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
-		[string]$WorkspaceName,
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName,
 		[Parameter(Mandatory=$True, HelpMessage="Run Message")]
 		[string]$Message,
 		[string]$configVersionId,
 		[switch]$DestroyTrue = $False
 	)
 	begin {
-		Write-Verbose "Creating TF Cloud Workspace $WorkspaceName"
+		Write-Verbose "Creating TF Cloud Workspace Runs"
 	} 
 	process { 
 		$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs"
+		foreach ( $workspace in $WorkspaceName) {
+			Write-Verbose "Looking Up Id For Workspace: $workspace"
+			$workspaceDetails = Get-TfCloudWorkspaces -Name $workspace
+			$workspaceId = $workspaceDetails.id
 
-		Write-Verbose "Looking Up Id For Workspace: $WorkspaceName"
-		$workspaceId = ( Get-TfCloudWorkspaces -Name $WorkspaceName ).id
-
-		$bodyObject = @{
-            "data" = @{
-                "attributes" = @{
-					"is-destroy" = $DestroyTrue
-					"message" = $Message
-				}
-                "type" = "runs"
-				"relationships" = @{
-					"workspace" = @{
+			$bodyObject = @{
+            	"data" = @{
+                	"attributes" = @{
+						"is-destroy" = $DestroyTrue
+						"message" = $Message
+					}
+                	"type" = "runs"
+					"relationships" = @{
+						"workspace" = @{
+							"data" = @{
+								"type" = "workspaces"
+								"id" = $workspaceId
+							}
+						}
+					}
+            	}
+        	}
+			if ( $configVersionId ) {
+				$config_version = @{
+					"configuration-version" = @{
 						"data" = @{
-							"type" = "workspaces"
-							"id" = $workspaceId
+							"type" = "configuration-versions"
+							"id" = $configVersionId
 						}
 					}
 				}
-            }
-        }
-		if ( $configVersionId ) {
-			$config_version = @{
-				"configuration-version" = @{
-					"data" = @{
-						"type" = "configuration-versions"
-						"id" = $configVersionId
-					}
-				}
+				$bodyObject.data = $bodyObject.data += $config_version
 			}
-			$bodyObject.data = $bodyObject.data += $config_version
-		}
-		$body = $bodyObject | ConvertTo-Json -Depth 5
+			$body = $bodyObject | ConvertTo-Json -Depth 5
 
-		$workspaceRun = Calling-Post -url $url -Body $body
-		$workspaceRun.data | Add-Member -NotePropertyName "status" -NotePropertyValue $workspaceRun.data.attributes.status
-		Write-Output $workspaceRun.data
+			if ($PSCmdlet.ShouldProcess($workspace)) {
+				$workspaceRun = Calling-Post -url $url -Body $body
+				$workspaceRun.data | Add-Member -NotePropertyName "status" -NotePropertyValue $workspaceRun.data.attributes.status
+				$workspaceRun.data | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $workspace
+				Write-Output $workspaceRun.data
+			}
+		}
 	}
-	
 }
 Function Get-TfCloudRunDetails {
+	<#
+		.SYNOPSIS
+			Gets Details On A TF Cloud Run, Can Wait For Completion
+		.DESCRIPTION
+			Gets Details On A TF Cloud Run, Can Wait For Completion
+		.PARAMETER  RunID
+			TFCloud Run IDs To Get Details On
+		.PARAMETER  WaitForCompletion
+			Wait for the TF Cloud Run to complete.
+		.PARAMETER  StopAtPlanned
+			When waiting for TF Cloud Run to complete, exit when the status is Planned.
+		.EXAMPLE
+			PS C:\> Get-TfCloudRunDetails -RunID run-xxxx
+	#>
     [CmdletBinding()]
     [OutputType([Object])]
     Param(
-        [Parameter(Mandatory = $true, HelpMessage = "Enter the TF Cloud Run Id.")]
-		[string]$RunID,
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TF Cloud Run Id.")]
+		[Alias('Id')]
+		[string[]]$RunID,
         [Parameter(Mandatory=$false, HelpMessage = "Wait for the TF Cloud Run to complete.")]
 		[Switch]$WaitForCompletion,
         [Parameter(Mandatory=$false, HelpMessage = "When waiting for TF Cloud Run to complete, exit when the status is Planned.")]
 		[Switch]$StopAtPlanned
     )
 	Begin {
-		Write-verbose "Getting Run Details For Run Id: $RunID"
+		Write-verbose "Getting TF Cloud Run Details"
     	$StatesToWaitFor = @("applying", 'apply_queued', "canceled", "confirmed", "pending", "planning", "policy_checked", "policy_checking", "policy_override", "plan_queued")
 		If (!$StopAtPlanned)
     	{
@@ -434,24 +499,30 @@ Function Get-TfCloudRunDetails {
     	}
 	}
 	Process {
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${runId}"
-        if ($WaitForCompletion) {
-            $bFirstRequest = $true
-            do {
-                if (!$bFirstRequest) { Start-Sleep 10 }
-				$runDetails = Calling-Get -url $url
-				$bFirstRequest = $false
-				$runStatus = $runDetails.data.attributes.status
+		foreach ( $run in $runId ) {
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${run}"
+			Write-verbose "Getting Run Details for Id: $run"
+			if ($WaitForCompletion) {
+            	$bFirstRequest = $true
+            	do {
+                	if (!$bFirstRequest) { Start-Sleep 10 }
+					$runDetails = Calling-Get -url $url
+					$bFirstRequest = $false
+					$runStatus = $runDetails.data.attributes.status
+					$runDetails.data | Add-Member -NotePropertyName "status" -NotePropertyValue $runStatus
+                	Write-Verbose "Terraform Workspace Run '$RunID' in '$runStatus' state"
+            	} while ($runStatus -in $StatesToWaitFor)
+        	} else {
+            	$runDetails = Calling-Get -url $url
+            	$runStatus = $runDetails.data.attributes.status
 				$runDetails.data | Add-Member -NotePropertyName "status" -NotePropertyValue $runStatus
-                Write-Verbose "Terraform Workspace Run '$RunID' in '$runStatus' state"
-            } while ($runStatus -in $StatesToWaitFor)
-        } else {
-            $runDetails = Calling-Get -url $url
-            $runStatus = $runDetails.data.attributes.status
-			$runDetails.data | Add-Member -NotePropertyName "status" -NotePropertyValue $runStatus
-        }
-		Write-Output $runDetails.data
-    }
+        	}
+			$runWorkspaceId = $runDetails.data.relationships.workspace.data.id
+			$runWorkspaceDetails = Get-TfCloudWorkspaceDetails -WorkspaceId $runWorkspaceId
+			$runDetails.data | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $runWorkspaceDetails.name
+			Write-Output $runDetails.data
+    	}
+	}    
 }
 Function Get-TFCloudPlan {
 	<#
@@ -467,21 +538,25 @@ Function Get-TFCloudPlan {
     [CmdletBinding()]
     [OutputType([Object])]
     Param(
-        [Parameter(Mandatory = $true, HelpMessage = "TF Cloud Run Id.")]
-		[string]$RunID
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TF Cloud Run Id.")]
+		[Alias('Id')]
+		[string[]]$RunID
     )
 	Begin {
-		Write-Verbose "Getting Plan For Run Id: $RunID"
+		Write-Verbose "Getting TF Cloud Plans For Runs"
 	}
 	Process {
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${RunID}"
-		$runsList = Calling-Get -url $url
-		foreach ($run in $runsList.data) {
-			$planId = $run.relationships.plan.data.id
-			$url = "$($Global:DefaultTfCloudOrg.ServerUri)plans/${planId}"
-			$planList = Calling-Get -url $url
-			foreach($plan in $planList.data) {
-				Write-Output $plan
+		foreach ( $run in $RunID ) {
+			Write-Verbose "Getting TF Cloud Plan For Run Id: $run"
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${run}"
+			$runsList = Calling-Get -url $url
+			foreach ($runOut in $runsList.data) {
+				$planId = $runOut.relationships.plan.data.id
+				$url = "$($Global:DefaultTfCloudOrg.ServerUri)plans/${planId}"
+				$planList = Calling-Get -url $url
+				foreach($plan in $planList.data) {
+					Write-Output $plan
+				}
 			}
 		}
 	}
@@ -492,7 +567,7 @@ Function Get-TFCloudPlanLog {
 			Gets A Plan Log For A TFCloud Plan
 		.DESCRIPTION
 			Gets A Plan Log For A TFCloud Plan
-		.PARAMETER  RunID
+		.PARAMETER  PlanId
 			TFCloud Plan ID To Query
 		.EXAMPLE
 			PS C:\> Get-TFCloudPlanLog -PlanId plan-xxxx
@@ -500,23 +575,27 @@ Function Get-TFCloudPlanLog {
     [CmdletBinding()]
     [OutputType([string])]
     Param(
-        [Parameter(Mandatory = $true, HelpMessage = "TF Cloud Plan Id.")]
-		[string]$PlanId
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TF Cloud Plan Id.")]
+		[Alias('Id')]
+		[string[]]$PlanId
     )
 	Begin {
-		Write-Verbose "Getting Plan Log For Plan Id: $PlanId"
+		Write-Verbose "Getting TF Cloud Plan Logs"
 	}
 	Process {
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)plans/${PlanId}"
-		$planList = Calling-Get -url $url
-		foreach ($plan in $planList.data) {
-			$planLogUri = $plan.attributes.'log-read-url'
-			$planLog = Calling-Get -url $planLogUri
-			Write-Output $planLog
+		foreach ( $plan in $PlanID ) {
+			Write-Verbose "Getting TF Cloud Plan Log For Plan Id: $plan"
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)plans/${plan}"
+			$planList = Calling-Get -url $url
+			foreach ($planOut in $planList.data) {
+				$planLogUri = $planOut.attributes.'log-read-url'
+				$planLog = Calling-Get -url $planLogUri
+				Write-Output $planLog
+			}
 		}
 	}
 }
-function Get-TfCloudConfigVersions {
+function Get-TfCloudConfigVersionsByWorkspace {
 	<#
 		.SYNOPSIS
 			Gets List Of Configuration Versions From TFCloud Workspace
@@ -532,24 +611,28 @@ function Get-TfCloudConfigVersions {
 	[CmdletBinding()]
 	[OutputType([Object])]
 	param(
-		[Parameter(Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
-		[string]$WorkspaceName
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory=$True, HelpMessage="TFCloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName
 	)
 	begin {
-		Write-Verbose "Getting TFCloud Configuration Versions For Workspace $WorkspaceName"
+		Write-Verbose "Getting TFCloud Configuration Versions"
 	} 
-	process { 
-		$workspaceId = ( Get-TfCloudWorkspaces -Name $WorkspaceName ).id
+	process {
+		foreach ( $workspace in $WorkspaceName ) {
+			Write-Verbose "Getting Configuration Versions For Workspace: $workspace"
+			$workspaceDetails = Get-TfCloudWorkspaces -Name $workspace
+			$workspaceId = $workspaceDetails.id
 
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/configuration-versions"
-		$configVersionList = Calling-Get -url $url
-		foreach ($configVersion in $configVersionList.data) {
-			write-output $configVersion
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/configuration-versions"
+			$configVersionList = Calling-Get -url $url
+			foreach ($configVersion in $configVersionList.data) {
+				write-output $configVersion
+			}
 		}
 	}
-	
 }
-function Get-TfCloudConfigVersion {
+function Get-TfCloudConfigVersionDetails {
 	<#
 		.SYNOPSIS
 			Gets Configuration Version By ID
@@ -563,27 +646,30 @@ function Get-TfCloudConfigVersion {
 	[CmdletBinding()]
 	[OutputType([Object])]
 	param(
-		[Parameter(Mandatory=$True, HelpMessage="TFCloud Config Version Id")]
-		[string]$configVersionId
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory=$True, HelpMessage="TFCloud Config Version Id")]
+		[Alias('Id')]
+		[string[]]$configVersionId
 	)
 	begin {
-		Write-Verbose "Getting TFCloud Configuration Version For ID: $configVersionId"
+		Write-Verbose "Getting TFCloud Configuration Version Details"
 	} 
-	process { 
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)configuration-versions/${configVersionId}"
-		$configVersionList = Calling-Get -url $url
-		foreach ($configVersion in $configVersionList.data) {
-			write-output $configVersion
+	process {
+		foreach ( $configId in $configVersionId ) {
+			Write-Verbose "Getting Configuration Version For ID: $configVersionId"
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)configuration-versions/${configId}"
+			$configVersionList = Calling-Get -url $url
+			foreach ($configVersion in $configVersionList.data) {
+				write-output $configVersion
+			}
 		}
 	}
-	
 }
 function Get-TfCloudOAuthClients {
 	<#
 		.SYNOPSIS
-			Gets List Of OAuth Clients From TFCloud Organization
+			Gets List Of OAuth Clients From TFCloud Organization. Lists all OAuth Clients if no name(s) specified.
 		.DESCRIPTION
-			Gets List Of OAuth Clients From TFCloud Organization
+			Gets List Of OAuth Clients From TFCloud Organization. Lists all OAuth Clients if no name(s) specified.
 		.PARAMETER  Name
 			TFCloud OAuth Clients Name(s) to list.  Lists all OAuth Clients if left blank
 		.EXAMPLE
@@ -634,31 +720,36 @@ function Get-TfCloudOAuthTokens {
 	[CmdletBinding()]
 	[OutputType([Object])]
 	param(
-		[Parameter(Mandatory=$True, HelpMessage="TFCloud OAuth Client Id")]
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory=$True, HelpMessage="TFCloud OAuth Client Id")]
+		[Alias('Id')]
 		[string[]]$clientId
 	)
 	begin {
-		Write-Verbose "Getting TFCloud OAuth Clients"
+		Write-Verbose "Getting TFCloud OAuth Tokens"
 	} 
-	process { 	
-		$url = "$($Global:DefaultTfCloudOrg.ServerUri)oauth-clients/${clientId}/oauth-tokens"
-		$oauthTokenList = Calling-Get -url $url
-		foreach ($token in $oauthTokenList.data) {
-			write-output $token
+	process {
+		foreach ( $id in $clientId ) {
+			Write-Verbose "Getting OAuth Token For ClientId: $id"
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)oauth-clients/${id}/oauth-tokens"
+			$oauthTokenList = Calling-Get -url $url
+			foreach ($token in $oauthTokenList.data) {
+				write-output $token
+			}
 		}
 	}
 }
 
 export-modulemember -Function Connect-JpTfCloud
 export-modulemember -Function Disconnect-JpTfCloud
-export-modulemember -Function Get-TfCloudWorkspaces
+export-modulemember -Function Get-TfCloudWorkspace
+export-modulemember -Function Get-TfCloudWorkspaceDetails
 export-modulemember -Function New-TfCloudWorkspace
-export-modulemember -Function Get-TfCloudRuns
+export-modulemember -Function Get-TfCloudRunsByWorkspace
 export-modulemember -Function Get-TfCloudRunDetails
 export-modulemember -Function Start-TfCloudRun
 export-modulemember -Function Get-TFCloudPlan
 export-modulemember -Function Get-TFCloudPlanLog
-export-modulemember -Function Get-TfCloudConfigVersions
-export-modulemember -Function Get-TfCloudConfigVersion
+export-modulemember -Function Get-TfCloudConfigVersionsByWorkspace
+export-modulemember -Function Get-TfCloudConfigVersionDetails
 export-modulemember -Function Get-TfCloudOAuthClients
 export-modulemember -Function Get-TfCloudOAuthTokens

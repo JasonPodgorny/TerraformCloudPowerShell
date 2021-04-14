@@ -3,7 +3,12 @@ Powershell Module For Managing Terraform Cloud API Via REST Calls.   Extremely f
 
 Terraform Cloud has lots of cool options that are available in REST so more will be added as more use cases are needed and you can take this and easily add your own.
 
-Only have a limited set of commandlets currently, some were created from scratch, others were borrowed and rewritten to conform to my personal style from here: https://github.com/tyconsulting/TerraformEnterprise-PS
+Slightly limited set of commandlets to start, some were created from scratch, others were borrowed and rewritten to conform to my personal style from here: https://github.com/tyconsulting/TerraformEnterprise-PS
+
+You can chain them together, for example:
+```
+Get-TfCloudWorkspace | Get-TfCloudRunsByWorkspace | Get-TfCloudPlan
+```
 
 This module also serves as a great starting point for any REST oriented Powershell modules, and could be repurposed with the calls to TF Cloud being replaced with calls to any REST based endpoint.   This was repurposed from one of my other REST examples in a very short time.
 
@@ -15,12 +20,13 @@ Disconnect-JpTfCloud
 ```
 
 ```
-Get-TfCloudWorkspaces
+Get-TfCloudWorkspace
+Get-TfCloudWorkspaceDetails
 New-TfCloudWorkspace
 ```
 
 ```
-Get-TfCloudRuns
+Get-TfCloudRunsByWorkspace
 Get-TfCloudRunDetails
 Start-TfCloudRun
 Get-TFCloudPlan
@@ -28,8 +34,8 @@ Get-TFCloudPlanLog
 ```
 
 ```
-Get-TfCloudConfigVersions
-Get-TfCloudConfigVersion
+Get-TfCloudConfigVersionsByWorkspace
+Get-TfCloudConfigVersionDetails
 ```
 
 ```
