@@ -7,20 +7,30 @@ This module also serves as a great starting point for any REST oriented Powershe
 
 Current Commandlets:
 
+```
 Connect-JpTfCloud
 Disconnect-JpTfCloud
+```
 
+```
 Get-TfCloudWorkspaces
 New-TfCloudWorkspace
+```
 
+```
 Get-TfCloudRuns
 Get-TfCloudRunDetails
 Start-TfCloudRun
 Get-TFCloudPlan
 Get-TFCloudPlanLog
+```
 
+```
 Get-TfCloudConfigVersions
 Get-TfCloudConfigVersion
+```
 
+```
 Get-TfCloudOAuthClients
 Get-TfCloudOAuthTokens
+```
