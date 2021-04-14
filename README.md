@@ -7,7 +7,7 @@ Slightly limited set of commandlets to start, some were created from scratch, ot
 
 One enhancement over the above reference module is that the commandlets are designed to take pipeline inputs from each other so you can chain them together.  For example you can start a run and wait for completion in one simple command like in the outputs below.
 
-You can also do things like get the list of workspaces and pipe that into another command that looks things up based on workspace.
+You could use Get-Workspace to get a full list of workspaces and pipe that into these to execute a run across all of them.   Lots of options for using in combination.
 
 ```
 terraform> Start-TfCloudRun -WorkspaceName centralus_dev_app-test_rg-test -Message "Test Run" | Get-TfCloudRunDetails -WaitForCompletion -Verbose
