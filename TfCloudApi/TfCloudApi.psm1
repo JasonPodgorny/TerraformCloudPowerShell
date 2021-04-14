@@ -126,6 +126,7 @@ Function Calling-Get {
 		} catch { 
 			Write-Warning "$_"
 			Write-Warning "Get Failed at - $url"
+			Throw "Get Failed at - $url"
 		}		
 	
 	}
@@ -153,6 +154,7 @@ Function Calling-Put {
 		} catch { 
 			Write-Warning "$_"
 			Write-Warning "Put Failed at - $url"
+			Throw "Put Failed at - $url"
 		}
 	}
 }
@@ -180,6 +182,7 @@ Function Calling-Post {
 		} catch { 
 			Write-Warning "$_" 
 			Write-Warning "Post Failed at - $url"
+			Throw "Post Failed at - $url"
 		}
 	}
 }
@@ -207,6 +210,7 @@ Function Calling-Patch {
 		} catch { 
 			Write-Warning "$_" 
 			Write-Warning "Patch Failed at - $url"
+			Throw "Patch Failed at - $url"
 		}
 	}
 }
@@ -232,6 +236,7 @@ Function Calling-Delete {
 		} catch { 
 			Write-Warning "$_"
 			Write-Warning "Delete Failed at - $url"
+			Throw "Delete Failed at - $url"
 		}		
 	
 	}
@@ -301,7 +306,13 @@ function Get-TfCloudWorkspaceDetails {
 		foreach ( $workspace in $WorkspaceId ) {
 			Write-Verbose "Getting TFCloud Workspace For Id: ${workspace}"
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspace}"
-			$workspaceList = Calling-Get -url $url
+			try {
+				$workspaceList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Get Workspace: $workspace"
+				continue;
+			}
 			foreach ($workspaceOut in $workspaceList.data) {
 				$workspaceOut | Add-Member -NotePropertyName "name" -NotePropertyValue $workspaceOut.attributes.name
 				if ( $name ) { 
@@ -381,7 +392,13 @@ function New-TfCloudWorkspace {
             }
         } | ConvertTo-Json -Depth 5
 		if ($PSCmdlet.ShouldProcess($Name)) {
-			$workspaceCreate = Calling-Post -url $url -Body $body
+			try {
+				$workspaceCreate = Calling-Post -url $url -Body $body
+			}
+			catch {
+				Write-Warning "Failed To Create Workspace: $Name"
+				continue;
+			}
 		}
 		$workspaceCreate.data | Add-Member -NotePropertyName "name" -NotePropertyValue $workspaceCreate.data.attributes.name
 		Write-Output $workspaceCreate.data
@@ -413,8 +430,22 @@ Function Remove-TfCloudWorkspace {
 			Write-Verbose "Removing TF Cloud Workspace: ${workspace}"
 			$url = "$($Global:DefaultTfCloudOrg.OrganizationUri)workspaces/${workspace}"
 			if ($PSCmdlet.ShouldProcess($workspace)) {
-				$workspaceCreate = Calling-Delete -url $url
-				Write-Output $true
+				try {
+					$removeFailure = $False
+					$workspaceRemove = Calling-Delete -url $url
+				}
+				catch {
+					Write-Warning "Failed To Remove Workspace: $workspace"
+					$removeFailure = $True
+					continue;
+				}
+				finally {
+					if ( $removeFailure ) {
+						Write-Output $False
+					} else {
+						Write-Output $True
+					}
+				}
 			}
 		}
     } 
@@ -447,7 +478,13 @@ function Get-TfCloudVariablesByWorkspace {
 			Write-Verbose "Getting Variables For Workspace: ${workspace}"
 			$workspaceOrg = $Global:DefaultTfCloudOrg.Organization
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)vars?filter%5Borganization%5D%5Bname%5D=${workspaceOrg}&filter%5Bworkspace%5D%5Bname%5D=${workspace}"
-			$variables = Calling-Get -url $url
+			try {
+				$variables = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Get Variables For Workspace: $workspace"
+				continue;
+			}
 			foreach ($variable in $variables.data) {
 				$variable | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $workspace
 				write-output $variable
@@ -572,7 +609,13 @@ function Add-TfCloudVariablesToWorkspace {
                             }
                         }
                     } | ConvertTo-Json -Depth 5
-					$addVariable = Calling-Post -url $url -body $body
+					try {
+						$addVariable = Calling-Post -url $url -body $body
+					}
+					catch {
+						Write-Warning "Failed To Add Variable To Workspace: $workspace"
+						continue;
+					}
 					Write-Output $addVariable.data
             	} elseif ($item.action -ieq "modify") {
                 	write-verbose "Modifying $($item.variable.key)"
@@ -590,7 +633,13 @@ function Add-TfCloudVariablesToWorkspace {
                             }
                         }
                     } | ConvertTo-Json
-					$modifyVariable = Calling-Patch -url $url -body $body
+					try {
+						$modifyVariable = Calling-Patch -url $url -body $body
+					}
+					catch {
+						Write-Warning "Failed To Modify Variable To Workspace: $workspace"
+						continue;
+					}
 					Write-Output $modifyVariable.data
                 }
             }
@@ -677,8 +726,22 @@ function Remove-TfCloudVariablesFromWorkspace {
             	foreach ($item in $VariableAction) {
                 	write-verbose "Removing $($item.variable.key)"
 					$url = "$($Global:DefaultTfCloudOrg.ServerUri)vars/$($VariableResult | Where-Object {$_.attributes.key -eq $item.variable.key -and $_.attributes.category -ieq $item.Variable.category -and $_.attributes.sensitive -eq $item.variable.sensitive} |Select-Object -exp id)"
-                    $deleteRequest = Calling-Delete -url $url
-					Write-Output $true
+					try {
+						$removeFailure = $False
+						$deleteRequest = Calling-Delete -url $url
+					}
+					catch {
+						Write-Warning "Failed To Delete Variable From Workspace: $workspace"
+						$removeFailure = $True
+						continue;
+					}
+					finally {
+						if ( $removeFailure ) {
+							Write-Output $False
+						} else {
+							Write-Output $True
+						}
+					}
                 }
             }
         }
@@ -716,7 +779,13 @@ function Get-TfCloudRunsByWorkspace {
 			$workspaceId = $workspaceDetails.id
 
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/runs"
-			$runsList = Calling-Get -url $url
+			try {
+				$runsList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Get Runs For Workspace: $workspace"
+				continue;
+			}
 			foreach ($run in $runsList.data) {
 				$run | Add-Member -NotePropertyName "status" -NotePropertyValue $run.attributes.status
 				$run | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $workspaceDetails.name
@@ -793,7 +862,13 @@ function Start-TfCloudRun {
 			$body = $bodyObject | ConvertTo-Json -Depth 5
 
 			if ($PSCmdlet.ShouldProcess($workspace)) {
-				$workspaceRun = Calling-Post -url $url -Body $body
+				try {
+					$workspaceRun = Calling-Post -url $url -Body $body
+				}
+				catch {
+					Write-Warning "Failed To Start Run For Workspace: $workspace"
+					continue;
+				}
 				$workspaceRun.data | Add-Member -NotePropertyName "status" -NotePropertyValue $workspaceRun.data.attributes.status
 				$workspaceRun.data | Add-Member -NotePropertyName "workspaceName" -NotePropertyValue $workspace
 				Write-Output $workspaceRun.data
@@ -843,7 +918,13 @@ Function Get-TfCloudRunDetails {
             	$bFirstRequest = $true
             	do {
                 	if (!$bFirstRequest) { Start-Sleep 10 }
-					$runDetails = Calling-Get -url $url
+					try {
+						$runDetails = Calling-Get -url $url
+					}
+					catch {
+						Write-Warning "Failed To Get Run Details For Run Id: $run"
+						continue;
+					}
 					$bFirstRequest = $false
 					$runStatus = $runDetails.data.attributes.status
 					$runDetails.data | Add-Member -NotePropertyName "status" -NotePropertyValue $runStatus
@@ -860,6 +941,88 @@ Function Get-TfCloudRunDetails {
 			Write-Output $runDetails.data
     	}
 	}    
+}
+function Approve-TFCloudRun {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([boolean])]
+    Param(
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TF Cloud Run Id.")]
+		[Alias('Id')]
+		[string[]]$RunID,
+        [Parameter(Mandatory = $false, HelpMessage = "Enter the comment for the queue plan.")]
+		[string]$comment = "Appy Run via REST API"
+    )
+    begin {
+		Write-Verbose "Approving TF Cloud Runs."
+	}
+	process {
+		foreach ( $run in $RunID ) {
+			Write-verbose "Apply Run Id: $RunID"
+			$body = @{
+            	"comment" = $Comment
+        	} | ConvertTo-Json
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${run}/actions/apply"
+			if ($PSCmdlet.ShouldProcess($run)) {
+				try {
+					$approveFailure = $False
+					$approveDetails = Calling-Post -url $url -body $body
+				}
+				catch {
+					Write-Warning "Failed To Approve Run Id: $run"
+					$approveFailure = $True
+					continue;
+				}
+				finally {
+					if ( $approveFailure ) {
+						Write-Output $False
+					} else {
+						Write-Output $True
+					}
+				}
+            }
+		}
+	}
+}
+function Stop-TfCloudRun {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='High')]
+    [OutputType([boolean])]
+    Param(
+		[Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TF Cloud Run Id.")]
+		[Alias('Id')]
+		[string[]]$RunID,
+        [Parameter(Mandatory = $false, HelpMessage = "Enter the comment for the queue plan.")]
+		[string]$comment = "Discard Run via REST API"
+    )
+    begin {
+		Write-Verbose "Stopping TF Cloud Runs."
+	}
+	process {
+		foreach ( $run in $RunID ) {
+			Write-verbose "Discarding Run Id: $RunID"
+			$body = @{
+            	"comment" = $Comment
+        	} | ConvertTo-Json
+			$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${run}/actions/discard"
+			if ($PSCmdlet.ShouldProcess($run)) {
+				try {
+					$stopFailure = $False
+					$stopDetails = Calling-Post -url $url -body $body
+				}
+				catch {
+					Write-Warning "Failed To Stop Run Id: $run"
+					$stopFailure = $True
+					continue;
+				}
+				finally {
+					if ( $stopFailure ) {
+						Write-Output $False
+					} else {
+						Write-Output $True
+					}
+				}
+            }
+		}
+	}
 }
 Function Get-TFCloudPlan {
 	<#
@@ -886,11 +1049,23 @@ Function Get-TFCloudPlan {
 		foreach ( $run in $RunID ) {
 			Write-Verbose "Getting TF Cloud Plan For Run Id: $run"
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)runs/${run}"
-			$runsList = Calling-Get -url $url
+			try {
+				$runsList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Get Details For Run Id: $run"
+				continue;
+			}
 			foreach ($runOut in $runsList.data) {
 				$planId = $runOut.relationships.plan.data.id
 				$url = "$($Global:DefaultTfCloudOrg.ServerUri)plans/${planId}"
-				$planList = Calling-Get -url $url
+				try {
+					$planList = Calling-Get -url $url
+				}
+				catch {
+					Write-Warning "Failed To Get Plan Details For Plan Id: $planId"
+					continue;
+				}
 				foreach($plan in $planList.data) {
 					Write-Output $plan
 				}
@@ -923,10 +1098,22 @@ Function Get-TFCloudPlanLog {
 		foreach ( $plan in $PlanID ) {
 			Write-Verbose "Getting TF Cloud Plan Log For Plan Id: $plan"
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)plans/${plan}"
-			$planList = Calling-Get -url $url
+			try {
+				$planList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Get Plan Details For Plan Id: $plan"
+				continue;
+			}
 			foreach ($planOut in $planList.data) {
 				$planLogUri = $planOut.attributes.'log-read-url'
-				$planLog = Calling-Get -url $planLogUri
+				try {
+					$planLog = Calling-Get -url $planLogUri
+				}
+				catch {
+					Write-Warning "Failed To Get Plan Log For Plan Id: $plan"
+					continue;
+				}
 				Write-Output $planLog
 			}
 		}
@@ -962,7 +1149,13 @@ function Get-TfCloudConfigVersionsByWorkspace {
 			$workspaceId = $workspaceDetails.id
 
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)workspaces/${workspaceId}/configuration-versions"
-			$configVersionList = Calling-Get -url $url
+			try {
+				$configVersionList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Config Versions For Workspace: $workspace"
+				continue;
+			}
 			foreach ($configVersion in $configVersionList.data) {
 				write-output $configVersion
 			}
@@ -994,7 +1187,13 @@ function Get-TfCloudConfigVersionDetails {
 		foreach ( $configId in $configVersionId ) {
 			Write-Verbose "Getting Configuration Version For ID: $configVersionId"
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)configuration-versions/${configId}"
-			$configVersionList = Calling-Get -url $url
+			try {
+				$configVersionList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Config Version Details For Id: $configId"
+				continue;
+			}
 			foreach ($configVersion in $configVersionList.data) {
 				write-output $configVersion
 			}
@@ -1025,7 +1224,13 @@ function Get-TfCloudOAuthClients {
 	} 
 	process {
 		$url = "$($Global:DefaultTfCloudOrg.OrganizationUri)oauth-clients"
-		$oauthClientList = Calling-Get -url $url
+		try {
+			$oauthClientList = Calling-Get -url $url
+		}
+		catch {
+			Write-Warning "Failed To Oauth Client List"
+			continue;
+		}
 		foreach ($client in $oauthClientList.data) {
 			$client | Add-Member -NotePropertyName "name" -NotePropertyValue $client.attributes.name
 			if ( $name ) { 
@@ -1066,7 +1271,13 @@ function Get-TfCloudOAuthTokens {
 		foreach ( $id in $clientId ) {
 			Write-Verbose "Getting OAuth Token For ClientId: $id"
 			$url = "$($Global:DefaultTfCloudOrg.ServerUri)oauth-clients/${id}/oauth-tokens"
-			$oauthTokenList = Calling-Get -url $url
+			try {
+				$oauthTokenList = Calling-Get -url $url
+			}
+			catch {
+				Write-Warning "Failed To Oauth Token List For Client: $id"
+				continue;
+			}
 			foreach ($token in $oauthTokenList.data) {
 				write-output $token
 			}
@@ -1086,6 +1297,8 @@ export-modulemember -Function Remove-TfCloudVariablesFromWorkspace
 export-modulemember -Function Get-TfCloudRunsByWorkspace
 export-modulemember -Function Get-TfCloudRunDetails
 export-modulemember -Function Start-TfCloudRun
+export-modulemember -Function Approve-TFCloudRun
+export-modulemember -Function Stop-TFCloudRun
 export-modulemember -Function Get-TFCloudPlan
 export-modulemember -Function Get-TFCloudPlanLog
 export-modulemember -Function Get-TfCloudConfigVersionsByWorkspace
