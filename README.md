@@ -5,7 +5,7 @@ Terraform Cloud has lots of cool options that are available in REST so more will
 
 Slightly limited set of commandlets to start, some were created from scratch, others were borrowed and rewritten to conform to my personal style from here: https://github.com/tyconsulting/TerraformEnterprise-PS
 
-You can chain them together, for example you can start a run and wait for completion in one simple command like in the outputs below.
+One enhancement over the above reference module is that the commandlets are designed to take pipeline inputs from each other so you can chain them together.  For example you can start a run and wait for completion in one simple command like in the outputs below.
 
 You can also do things like get the list of workspaces and pipe that into another command that looks things up based on workspace.
 
@@ -17,6 +17,8 @@ Confirm
 Are you sure you want to perform this action?
 Performing the operation "Start-TfCloudRun" on target "centralus_dev_app-test_rg-test".
 [Y] Yes  [A] Yes to All  [N] No  [L] No to All  [S] Suspend  [?] Help (default is "Y"): y
+
+
 VERBOSE: Getting Run Details for Id: run-kr3E9GArHeWcCzg1
 VERBOSE: Invoking REST GET at URL https://app.terraform.io/api/v2/runs/run-kr3E9GArHeWcCzg1
 VERBOSE: GET https://app.terraform.io/api/v2/runs/run-kr3E9GArHeWcCzg1 with 0-byte payload
