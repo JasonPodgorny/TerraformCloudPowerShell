@@ -456,6 +456,22 @@ function Get-TfCloudVariablesByWorkspace {
 	}
 }
 function Add-TfCloudVariable {
+	<#
+		.SYNOPSIS
+			Creates Variables In A Workspace
+		.DESCRIPTION
+			Creates Variables In A Workspace
+		.PARAMETER  WorkspaceName
+			TFCloud Workspace Name To Create Variables In
+		.PARAMETER  TFVariables
+			Terraform Variables In Hash Table
+		.PARAMETER  TFSecrets
+			Terraform Secret Variables In Hash Table
+		.PARAMETER  EnvVariables
+			Terraform Environment Variables In Hash Table
+		.PARAMETER  EnvSecrets
+			Terraform Environment Secret Variables In Hash Table
+	#>
     [CmdletBinding()]
 	[OutputType([Object])]
     Param(
@@ -945,8 +961,6 @@ function Get-TfCloudOAuthTokens {
 			Gets List Of OAuth Tokens From TFCloud OAuth Client
 		.PARAMETER  Name
 			TFCloud OAuth Clients Name to get tokens from.
-		.EXAMPLE
-			PS C:\> Get-TfCloudOAuthTokens
 		.EXAMPLE
 			PS C:\> Get-TfCloudOAuthTokens -name client1
 	#>
