@@ -404,6 +404,72 @@ function New-TfCloudWorkspace {
 		Write-Output $workspaceCreate.data
 	}
 }
+function Set-TfCloudWorkspace {
+    [CmdletBinding(SupportsShouldProcess, ConfirmImpact='Medium')]
+    [OutputType([object])]
+    Param(
+        [Parameter(ValueFromPipelineByPropertyName, Mandatory = $true, HelpMessage = "TF Cloud Workspace Name")]
+		[Alias('Name')]
+		[string[]]$WorkspaceName,
+        [Parameter(Mandatory = $false, HelpMessage = "Enter the new name of the workspace.")]
+		[string]$WorkspaceDescription,
+        [Parameter(Mandatory = $false, HelpMessage = "Enter the Terraform version of the workspace.")]
+		[string]$TerraformVersion,
+        [Parameter(Mandatory = $false, HelpMessage = "Enter the Terraform working Directory of the workspace.")
+		][boolean]$AutoApply,
+        [Parameter(Mandatory = $false, HelpMessage = "Allow destroy plan.")
+		][boolean]$AllowDestroyPlan,
+        [Parameter(Mandatory = $false, HelpMessage = "Whether to use remote execution mode. When set to false, the workspace will be used for state storage only.")]
+		[boolean]$UseRemoteExecution
+    )
+    begin {
+		Write-Verbose "Setting Values For Workspaces"
+    } 
+	process {
+		#Process input
+        $attributes = @{}
+        if ($PSBoundParameters.ContainsKey('WorkspaceDescription')) {
+        	$attributes.add('description', $WorkspaceDescription)
+    	}
+    	if ($PSBoundParameters.ContainsKey('TerraformVersion')) {
+        	$attributes.add('terraform-version', $TerraformVersion)
+		}
+        if ($PSBoundParameters.ContainsKey('AutoApply')) {
+           	$attributes.add('auto-apply', $AutoApply)
+        }
+        if ($PSBoundParameters.ContainsKey('AllowDestroyPlan')) {
+           	$attributes.add('allow-destroy-plan', $AllowDestroyPlan)
+        }
+        if ($PSBoundParameters.ContainsKey('UseRemoteExecution')) {
+           	$attributes.add('operations', $UseRemoteExecution)
+        }
+        if ($attributes.Keys.count -eq 0) {
+           	Write-Warning "No workspace attributes specified. Nothing to set."
+			Throw "No workspace attributes specified. Nothing to set."
+        }
+		foreach ( $workspace in $WorkspaceName ) {
+        	$body = @{
+            	"data" = @{
+                	"attributes"    = $attributes
+                	"type" = "workspaces"
+                	}
+        	} | ConvertTo-Json -Depth 5
+
+			$url = "$($Global:DefaultTfCloudOrg.OrganizationUri)workspaces/${WorkspaceName}"
+			Write-Verbose "Changing Settings For Workspace: ${workspace}"
+			if ($PSCmdlet.ShouldProcess($WorkspaceName)) {
+        		try {
+					$workspaceSet = Calling-Patch -url $url -Body $body
+				}
+				catch {
+					Write-Warning "Failed To Change Settings For Workspace: $WorkspaceName"
+					continue;
+				}
+				Write-Output $workspaceSet.data
+			}
+    	}
+	}
+}
 Function Remove-TfCloudWorkspace {
 	<#
 		.SYNOPSIS
@@ -1290,6 +1356,7 @@ export-modulemember -Function Disconnect-JpTfCloud
 export-modulemember -Function Get-TfCloudWorkspace
 export-modulemember -Function Get-TfCloudWorkspaceDetails
 export-modulemember -Function New-TfCloudWorkspace
+export-modulemember -Function Set-TfCloudWorkspace
 export-modulemember -Function Remove-TfCloudWorkspace
 export-modulemember -Function Get-TfCloudVariablesByWorkspace
 export-modulemember -Function Add-TfCloudVariablesToWorkspace

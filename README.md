@@ -68,6 +68,7 @@ Disconnect-JpTfCloud
 Get-TfCloudWorkspace
 Get-TfCloudWorkspaceDetails
 New-TfCloudWorkspace
+Set-TfCloudWorkspace
 Remove-TfCloudWorkspace
 ```
 
